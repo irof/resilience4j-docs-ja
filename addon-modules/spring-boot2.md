@@ -1,31 +1,30 @@
 Getting Started
 ===============
-resilience4j-spring-boot2の利用
+resilience4j-spring-boot2 もしくは resilience4j-spring-boot3 の利用
 
 [トップページに戻る](../index.md)
 
 # 準備
 Resilience4jのSpring Boot Starterをコンパイル依存性に追加してください。
 
-このモジュールは、実行時に `org.springframework.boot:spring-boot-starter-actuator` および `org.springframework.boot:spring-boot-starter-aop` が既に提供されていることを期待します。WebFluxをSpring Boot 2で使っている場合は `io.github.resilience4j:resilience4j-reactor` も必要です。
+このモジュールは、実行時に `org.springframework.boot:spring-boot-starter-actuator` および `org.springframework.boot:spring-boot-starter-aop` が既に提供されていることを期待します。WebFluxをSpring Boot 2もしくはSpring Boot 3で使っている場合は `io.github.resilience4j:resilience4j-reactor` も必要です。
 
 ```groovy
-repositories {
-    jCenter()
-}
-
 dependencies {
-    compile "io.github.resilience4j:resilience4j-spring-boot2:${resilience4jVersion}"
-    compile('org.springframework.boot:spring-boot-starter-actuator')
-    compile('org.springframework.boot:spring-boot-starter-aop')
+  implementation "io.github.resilience4j:resilience4j-spring-boot2:${resilience4jVersion}"
+  //implementation "io.github.resilience4j:resilience4j-spring-boot3:${resilience4jVersion}"
+  implementation "org.springframework.boot:spring-boot-starter-actuator"
+  implementation "org.springframework.boot:spring-boot-starter-aop"
 }
 ```
 
 # デモ
 Spring Boot 2における準備および利用は[demo](https://github.com/resilience4j/resilience4j-spring-boot2-demo)で紹介されています。
 
+Spring Boot 3における準備および利用は[demo](https://github.com/resilience4j/resilience4j-spring-boot3-demo)で紹介されています。
+
 # 設定
-CircuitBreaker・Retry・RateLimiter・Bulkhead・ThreadPoolBulkhead・TimeLimiterのインスタンスは、Spring Bootのapplication.yml設定ファイルで設定できます。
+CircuitBreaker・Retry・RateLimiter・Bulkhead・ThreadPoolBulkhead・TimeLimiterのインスタンスは、Spring Bootの `application.yml` 設定ファイルで設定できます。
 
 例
 
@@ -49,7 +48,7 @@ resilience4j.circuitbreaker:
 resilience4j.retry:
     instances:
         backendA:
-            maxRetryAttempts: 3
+            maxAttempts: 3
             waitDuration: 10s
             enableExponentialBackoff: true
             exponentialBackoffMultiplier: 2
@@ -59,7 +58,7 @@ resilience4j.retry:
             ignoreExceptions:
                 - io.github.robwin.exception.BusinessException
         backendB:
-            maxRetryAttempts: 3
+            maxAttempts: 3
             waitDuration: 10s
             retryExceptions:
                 - org.springframework.web.client.HttpServerErrorException
@@ -76,11 +75,12 @@ resilience4j.bulkhead:
             maxConcurrentCalls: 20
             
 resilience4j.thread-pool-bulkhead:
-    instances:
-        backendC:
-            maxThreadPoolSize: 1
-            coreThreadPoolSize: 1
-            queueCapacity: 1
+  instances:
+    backendC:
+      maxThreadPoolSize: 1
+      coreThreadPoolSize: 1
+      queueCapacity: 1
+      writableStackTraceEnabled: true
         
 resilience4j.ratelimiter:
     instances:
@@ -105,7 +105,7 @@ resilience4j.timelimiter:
             cancelRunningFuture: false
 ```
 
-デフォルトの設定を上書きすることも可能です。Spring Bootのapplication.yml設定ファイルに共有設定を定義し、上書きます。
+デフォルトの設定を上書きすることも可能です。Spring Bootの `application.yml` 設定ファイルに共有設定を定義し、上書きます。
 
 例
 
@@ -146,13 +146,13 @@ Resilience4jは上記のように利用できるCustomizer型を持っていま�
 |----------------|---------------------------|
 | Circuit breaker | CircuitBreakerConfigCustomizer |
 | Retry | RetryConfigCustomizer |
-| RateLimiter | RateLimiterConfigCustomizer |
+| Rate limiter | RateLimiterConfigCustomizer |
 | Bulkhead | BulkheadConfigCustomizer |
 | ThreadPoolBulkhead | ThreadPoolBulkheadConfigCustomizer |
-| TimeLimiter | TimeLimiterConfigCustomizer |
+| Time Limiter | TimeLimiterConfigCustomizer |
 
 # アノテーション
-Spring Boot 2 Starterは、アノテーションとAuto Configuration済みのAOPアスペクトを提供します。RateLimiter・Retry・CircuitBreaker・Bulkheadアノテーションは、同期戻り値型およびCompletableFutureやSpring ReactorのFluxやMonoのようなリアクティブ型（ `resilience4j-reactor` などの適切なパッケージをインポートしている場合）をサポートしています。
+Spring Boot Starterは、アノテーションとAuto Configuration済みのAOPアスペクトを提供します。RateLimiter・Retry・CircuitBreaker・Bulkheadアノテーションは、同期戻り値型およびCompletableFutureのような非同期型、Spring ReactorのFluxやMonoのようなリアクティブ型（ `resilience4j-reactor` などの適切なパッケージをインポートしている場合）をサポートしています。
 
 Bulkheadアノテーションには、利用されるバルクヘッド実装を定義するtype属性があります。デフォルトはセマフォですが、アノテーションのtype属性を設定することでスレッドプールに変更できます:
 
@@ -164,24 +164,40 @@ public CompletableFuture<String> doSomethingAsync() throws InterruptedException 
 }
 ```
 
-全てのResilience4jがサポートしているSpringアスペクトの例
+# フォールバックメソッド
+
+フォールバックメソッドの仕組みはtry/catchブロックのように動作します。
+フォールバックメソッドが設定されている場合、全ての例外はフォールバックメソッドエグゼキューターに転送されます。
+フォールバックメソッドエグゼキューターは例外をハンドリングできるフォールバックメソッドから最もマッチするものを探します。
+catchブロックのようなものです。
+フォールバックはサーキットブレイカーサーキットブレイカーの現在の状態とは無関係に実行されます。
+
+例
 
 ```java
 @CircuitBreaker(name = BACKEND, fallbackMethod = "fallback")
 @RateLimiter(name = BACKEND)
-@Bulkhead(name = BACKEND)
-@Retry(name = BACKEND, fallbackMethod = "fallback")
+@Bulkhead(name = BACKEND, fallbackMethod = "fallback")
+@Retry(name = BACKEND)
 @TimeLimiter(name = BACKEND)
 public Mono<String> method(String param1) {
     return Mono.error(new NumberFormatException());
 }
 
-private Mono<String> fallback(String param1, IllegalArgumentException e) {
-    return Mono.just("test");
+private Mono<String> fallback(String param1, CallNotPermittedException e) {
+    return Mono.just("Handled the exception when the CircuitBreaker is open");
 }
 
-private Mono<String> fallback(String param1, RuntimeException e) {
-    return Mono.just("test");
+private Mono<String> fallback(String param1, BulkheadFullException e) {
+    return Mono.just("Handled the exception when the Bulkhead is full");
+}
+
+private Mono<String> fallback(String param1, NumberFormatException e) {
+    return Mono.just("Handled the NumberFormatException");
+}
+
+private Mono<String> fallback(String param1, Exception e) {
+    return Mono.just("Handled any other exception");
 }
 ```
 
@@ -198,7 +214,9 @@ private Mono<String> fallback(String param1, RuntimeException e) {
 # アスペクトの順番
 Resilience4jアスペクトの順番は下記のとおりです:
 
-Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( Function ) ) ) ) )
+`Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( Function ) ) ) ) )`
+
+そのため、`Retry` が必要な場合は最後に適用されます。
 
 違う順番が必要な場合は、Springアノテーションスタイルの代わりに関数チェーンスタイルを使うか、下記のプロパティでアスペクトの順番を明示的に設定してください。
 
@@ -342,7 +360,9 @@ CLOSEDなCircuitBreakerがUPとマッピングされ、OPEN状態はDOWN、HALF-
 # Eventsエンドポイント
 放出されたCircuitBreaker・Retry・RateLimiter・Bulkhead・TimeLimiterイベントは別々の循環イベントコンシューマーバッファーに保存されます。イベントコンシューマーバッファーのサイズはapplication.ymlファイルで設定できます（eventConsumerBufferSize）。
 
-`/actuator/circuitbreakers` エンドポイントは全CircuitBreakerインスタンスの名前を一覧します。Retry・RateLimiter・Bulkhead・TimeLimiterのエンドポイントも利用可能です。
+`/actuator/circuitbreakers` エンドポイントは全CircuitBreakerインスタンスの名前を一覧します。Retry・RateLimiter・Bulkhead・TimeLimiterのエンドポイントも同様に利用可能です。
+
+> 訳注: RateLimiterの場合は `/actuator/ratelimiters` になります。
 
 例:
 
